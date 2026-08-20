@@ -3,18 +3,13 @@ import logging
 from flask import Flask, request, jsonify
 from telegram import Update, Bot
 from telegram.ext import Dispatcher, MessageHandler, Filters, CallbackContext
-import google.generativeai as genai
+import requests
 
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
-# Настройка Gemini
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
-
-# Настройка Telegram
 bot = Bot(token=TELEGRAM_TOKEN)
 dispatcher = Dispatcher(bot, None, workers=4)
 
@@ -25,8 +20,22 @@ def handle_message(update: Update, context: CallbackContext):
     context.bot.send_chat_action(chat_id=chat_id, action="typing")
     
     try:
-        response = model.generate_content(user_text)
-        answer = response.text
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://telegram-ai-bot.onrender.com",
+                "X-Title": "Telegram AI Bot"
+            },
+            json={
+                "model": "meta-llama/llama-3.1-8b-instruct:free",
+                "messages": [{"role": "user", "content": user_text}]
+            },
+            timeout=30
+        )
+        data = response.json()
+        answer = data["choices"][0]["message"]["content"]
     except Exception as e:
         answer = "Извините, произошла ошибка. Попробуйте позже."
         logging.error(e)
