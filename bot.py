@@ -1,8 +1,7 @@
 import os
 import logging
-from flask import Flask, request, jsonify
-from telegram import Update, Bot
-from telegram.ext import Dispatcher, MessageHandler, Filters, CallbackContext
+from flask import Flask, request
+import telebot
 import requests
 
 app = Flask(__name__)
@@ -10,15 +9,9 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
-bot = Bot(token=TELEGRAM_TOKEN)
-dispatcher = Dispatcher(bot, None, workers=4)
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-def handle_message(update: Update, context: CallbackContext):
-    user_text = update.message.text
-    chat_id = update.effective_chat.id
-    
-    context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    
+def get_ai_response(user_text):
     try:
         response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -35,21 +28,22 @@ def handle_message(update: Update, context: CallbackContext):
             timeout=30
         )
         data = response.json()
-        answer = data["choices"][0]["message"]["content"]
+        return data["choices"][0]["message"]["content"]
     except Exception as e:
-        answer = "Извините, произошла ошибка. Попробуйте позже."
         logging.error(e)
-    
-    update.message.reply_text(answer)
+        return "Извините, произошла ошибка. Попробуйте позже."
 
-dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    bot.send_chat_action(message.chat.id, "typing")
+    answer = get_ai_response(message.text)
+    bot.reply_to(message, answer)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     json_data = request.get_json(force=True)
-    update = Update.de_json(json_data, bot)
-    dispatcher.process_update(update)
-    return jsonify({"ok": True})
+    bot.process_new_updates([telebot.types.Update.de_json(json_data)])
+    return "ok"
 
 @app.route("/")
 def index():
