@@ -24,32 +24,14 @@ def get_ai_response(user_text):
                 "X-Title": "Telegram AI Bot"
             },
             json={
-                "model": "meta-llama/llama-3.1-8b-instruct:free",
+                "model": "nousresearch/hermes-3-llama-3.1-405b:free",
                 "messages": [{"role": "user", "content": user_text}]
             },
             timeout=30
         )
+        print("STATUS:", response.status_code)
+        print("BODY:", response.text[:500])
         data = response.json()
         return data["choices"][0]["message"]["content"]
     except Exception as e:
-        return "Извините, произошла ошибка. Попробуйте позже."
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    data = request.get_json(force=True)
-    message = data.get("message", {})
-    chat_id = message.get("chat", {}).get("id")
-    text = message.get("text", "")
-    
-    if chat_id and text:
-        answer = get_ai_response(text)
-        send_message(chat_id, answer)
-    
-    return {"ok": True}
-
-@app.route("/")
-def index():
-    return "Bot is running!"
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+        print("ERROR:", str(e))
