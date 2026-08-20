@@ -24,7 +24,7 @@ def get_ai_response(user_text):
                 "X-Title": "Telegram AI Bot"
             },
             json={
-                "model": "openrouter/free",
+                "model": "mistralai/mistral-7b-instruct:free",
                 "messages": [{"role": "user", "content": user_text}]
             },
             timeout=30
