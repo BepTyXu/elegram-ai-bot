@@ -29,24 +29,42 @@ def get_ai_response(user_text):
             },
             timeout=30
         )
-        print("STATUS:", response.status_code)
-        print("BODY:", response.text[:500])
         data = response.json()
         return data["choices"][0]["message"]["content"]
     except Exception as e:
-        print("ERROR:", str(e))
+        print("AI ERROR:", str(e))
         return "Извините, произошла ошибка. Попробуйте позже."
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
+    print("FULL DATA:", str(data)[:1000])
+    
+    # Обычное сообщение боту
     message = data.get("message", {})
     chat_id = message.get("chat", {}).get("id")
     text = message.get("text", "")
     
+    # Если нет — пробуем business_message (Telegram Business)
+    if not chat_id:
+        message = data.get("business_message", {})
+        chat_id = message.get("chat", {}).get("id")
+        text = message.get("text", "")
+    
+    # Если нет — пробуем edited_business_message
+    if not chat_id:
+        message = data.get("edited_business_message", {})
+        chat_id = message.get("chat", {}).get("id")
+        text = message.get("text", "")
+    
+    print("CHAT_ID:", chat_id)
+    print("TEXT:", text)
+    
     if chat_id and text:
         answer = get_ai_response(text)
         send_message(chat_id, answer)
+    else:
+        print("NO CHAT_ID OR TEXT — skipping")
     
     return {"ok": True}
 
