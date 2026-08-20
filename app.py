@@ -24,38 +24,42 @@ def get_ai_response(user_text):
                 "X-Title": "Telegram AI Bot"
             },
             json={
-                "model": "mistralai/mistral-7b-instruct:free",
+                "model": "openrouter/free",
                 "messages": [{"role": "user", "content": user_text}]
             },
             timeout=30
         )
         data = response.json()
-        return data["choices"][0]["message"]["content"]
+        print("RAW RESPONSE:", str(data)[:800])
+        
+        if "error" in data:
+            print("API ERROR:", data["error"])
+            return "Извините, сервис временно недоступен. Попробуйте позже."
+        
+        if "choices" not in data or not data["choices"]:
+            print("NO CHOICES IN RESPONSE")
+            return "Привет! Чем могу помочь?"
+        
+        answer = data["choices"][0]["message"]["content"]
+        
+        # Фильтр баговых ответов
+        if "User Safety" in answer or not answer.strip():
+            return "Привет! Чем могу помочь?"
+        
+        return answer
     except Exception as e:
-        print("AI ERROR:", str(e))
+        print("EXCEPTION:", str(e))
         return "Извините, произошла ошибка. Попробуйте позже."
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
-    print("FULL DATA:", str(data)[:1000])
-    
-    # Обычное сообщение боту
-    message = data.get("message", {})
+    message = data.get("message") or data.get("business_message") or data.get("edited_business_message") or {}
     chat_id = message.get("chat", {}).get("id")
     text = message.get("text", "")
     
-    # Если нет — пробуем business_message (Telegram Business)
     if not chat_id:
-        message = data.get("business_message", {})
-        chat_id = message.get("chat", {}).get("id")
-        text = message.get("text", "")
-    
-    # Если нет — пробуем edited_business_message
-    if not chat_id:
-        message = data.get("edited_business_message", {})
-        chat_id = message.get("chat", {}).get("id")
-        text = message.get("text", "")
+        chat_id = data.get("chat", {}).get("id")
     
     print("CHAT_ID:", chat_id)
     print("TEXT:", text)
@@ -63,8 +67,6 @@ def webhook():
     if chat_id and text:
         answer = get_ai_response(text)
         send_message(chat_id, answer)
-    else:
-        print("NO CHAT_ID OR TEXT — skipping")
     
     return {"ok": True}
 
