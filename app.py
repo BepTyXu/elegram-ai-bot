@@ -1,73 +1,79 @@
 import os
+import time
 import requests
 from flask import Flask, request
+import google.generativeai as genai
 
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-def send_message(chat_id, text):
+# Настройка Gemini
+genai.configure(api_key=GEMINI_API_KEY)
+gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+
+last_reply_time = {}
+bot_enabled = True
+
+def send_message(chat_id, text, business_connection_id=None):
     url = f"{TELEGRAM_API}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, json=payload, timeout=10)
+    if business_connection_id:
+        payload["business_connection_id"] = business_connection_id
+    resp = requests.post(url, json=payload, timeout=10)
+    print("SEND STATUS:", resp.status_code)
 
 def get_ai_response(user_text):
     try:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://telegram-ai-bot.onrender.com",
-                "X-Title": "Telegram AI Bot"
-            },
-            json={
-                "model": "openrouter/free",
-                "messages": [{"role": "user", "content": user_text}]
-            },
-            timeout=30
-        )
-        data = response.json()
-        print("RAW RESPONSE:", str(data)[:800])
-        
-        if "error" in data:
-            print("API ERROR:", data["error"])
-            return "Извините, сервис временно недоступен. Попробуйте позже."
-        
-        if "choices" not in data or not data["choices"]:
-            print("NO CHOICES IN RESPONSE")
+        response = gemini_model.generate_content(user_text)
+        answer = response.text
+        if not answer or not answer.strip():
             return "Привет! Чем могу помочь?"
-        
-        answer = data["choices"][0]["message"]["content"]
-        
-        # Фильтр баговых ответов
-        if "User Safety" in answer or not answer.strip():
-            return "Привет! Чем могу помочь?"
-        
         return answer
     except Exception as e:
-        print("EXCEPTION:", str(e))
+        print("GEMINI ERROR:", str(e))
         return "Извините, произошла ошибка. Попробуйте позже."
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    global bot_enabled
     data = request.get_json(force=True)
+    
     message = data.get("message") or data.get("business_message") or data.get("edited_business_message") or {}
     chat_id = message.get("chat", {}).get("id")
     text = message.get("text", "")
-    
-    if not chat_id:
-        chat_id = data.get("chat", {}).get("id")
+    business_connection_id = data.get("business_connection_id") or message.get("business_connection_id")
     
     print("CHAT_ID:", chat_id)
     print("TEXT:", text)
     
-    if chat_id and text:
-        answer = get_ai_response(text)
-        send_message(chat_id, answer)
+    if not chat_id or not text:
+        return {"ok": True}
     
+    if text.lower().strip() == "/off":
+        bot_enabled = False
+        send_message(chat_id, "🤖 Бот отключён. Напишите /on, чтобы включить.", business_connection_id)
+        return {"ok": True}
+    
+    if text.lower().strip() == "/on":
+        bot_enabled = True
+        send_message(chat_id, "🤖 Бот включён.", business_connection_id)
+        return {"ok": True}
+    
+    if not bot_enabled:
+        return {"ok": True}
+    
+    now = time.time()
+    last = last_reply_time.get(chat_id, 0)
+    if now - last < 10:
+        print(f"COOLDOWN: skipping chat {chat_id}")
+        return {"ok": True}
+    
+    last_reply_time[chat_id] = now
+    answer = get_ai_response(text)
+    send_message(chat_id, answer, business_connection_id)
     return {"ok": True}
 
 @app.route("/")
