@@ -1,15 +1,17 @@
 import os
-import logging
-from flask import Flask, request
-import telebot
 import requests
+from flask import Flask, request
 
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
+def send_message(chat_id, text):
+    url = f"{TELEGRAM_API}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    requests.post(url, json=payload, timeout=10)
 
 def get_ai_response(user_text):
     try:
@@ -30,20 +32,20 @@ def get_ai_response(user_text):
         data = response.json()
         return data["choices"][0]["message"]["content"]
     except Exception as e:
-        logging.error(e)
         return "Извините, произошла ошибка. Попробуйте позже."
-
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    bot.send_chat_action(message.chat.id, "typing")
-    answer = get_ai_response(message.text)
-    bot.reply_to(message, answer)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    json_data = request.get_json(force=True)
-    bot.process_new_updates([telebot.types.Update.de_json(json_data)])
-    return "ok"
+    data = request.get_json(force=True)
+    message = data.get("message", {})
+    chat_id = message.get("chat", {}).get("id")
+    text = message.get("text", "")
+    
+    if chat_id and text:
+        answer = get_ai_response(text)
+        send_message(chat_id, answer)
+    
+    return {"ok": True}
 
 @app.route("/")
 def index():
