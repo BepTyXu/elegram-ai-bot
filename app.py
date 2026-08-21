@@ -22,7 +22,7 @@ def send_message(chat_id, text, business_connection_id=None):
 
 def get_ai_response(user_text):
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={GEMINI_API_KEY}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.0-pro:generateContent?key={GEMINI_API_KEY}"
         payload = {
             "contents": [{
                 "parts": [{"text": user_text}]
